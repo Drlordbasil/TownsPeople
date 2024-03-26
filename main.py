@@ -8,8 +8,10 @@ from mayor import Mayor
 from agent import Agent
 from utils import generate_random_name, generate_random_talent, generate_random_trait
 from visualization import visualize_town
+import logging
 
 def main():
+    
     openai_base_url = "http://localhost:11434/v1"
     openai_api_key = "ollama"
     groq_api_key = "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"

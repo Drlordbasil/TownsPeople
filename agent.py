@@ -1,4 +1,5 @@
 import time
+import random
 from message import Message
 from inventory import Inventory
 from action import update_inventory, list_inventory, examine_item, use_item, give_item, ask_for_item, trade_item, move
@@ -24,6 +25,11 @@ class Agent:
             "interior_design": 1
         }
         self.relationships = {}
+        self.money = 100
+        self.q_table = {}
+        self.learning_rate = 0.1
+        self.discount_factor = 0.9
+        self.epsilon = 0.1
 
     def interact_with_agent(self, other_agent, environment):
         relationship = self.relationships.get(other_agent.name, 0)
@@ -155,12 +161,45 @@ class Agent:
             else:
                 self.send_message(f"Cannot move to {new_position}. Position is not valid.", environment)
 
+    def get_state(self, environment):
+        nearby_agents = environment.get_nearby_agents(self.position)
+        state = (
+            tuple(sorted(self.inventory.items)),
+            tuple(sorted(agent.name for agent in nearby_agents)),
+            self.position
+        )
+        return state
+
+    def get_max_q(self, state):
+        if state not in self.q_table:
+            self.q_table[state] = {action: 0 for action in self.get_available_actions(state)}
+        return max(self.q_table[state].values())
+
+    def get_available_actions(self, state):
+        actions = ["move", "trade", "give", "ask"]
+        if self.inventory.items:
+            actions.extend(["use", "put"])
+        return actions
+
+    def choose_action(self, state):
+        if random.random() < self.epsilon:
+            return random.choice(self.get_available_actions(state))
+        else:
+            if state not in self.q_table:
+                self.q_table[state] = {action: 0 for action in self.get_available_actions(state)}
+            return max(self.q_table[state], key=self.q_table[state].get)
+
+    def update_q_table(self, state, action, reward, next_state):
+        old_value = self.q_table[state][action]
+        next_max = self.get_max_q(next_state)
+        new_value = (1 - self.learning_rate) * old_value + self.learning_rate * (reward + self.discount_factor * next_max)
+        self.q_table[state][action] = new_value
+
     def build_town(self, environment, shared_grid, shared_grid_lock):
         print(f"Agent {self.name} is initiating the town-building process.")
         self.send_message("Mayor: Let's start building our new town together!", environment)
         self.send_message("""
         Discover the town's surroundings and gather resources to build the town, check everything in your town, make sure you build an economy with words.
-
         """, environment)
 
         self.send_message(environment.list_items(), environment)
@@ -180,9 +219,50 @@ class Agent:
                     print(f"Agent {current_agent.name} has determined that the town is complete.")
                     break
                 else:
-                    command = current_agent.extract_command(response)
-                    if command:
-                        current_agent.parse_command(command, environment, shared_grid, shared_grid_lock)
+                    state = current_agent.get_state(environment)
+                    action = current_agent.choose_action(state)
+                    reward = 0
+
+                    if action == "trade":
+                        nearby_agents = environment.get_nearby_agents(current_agent.position)
+                        if nearby_agents:
+                            target_agent = random.choice([agent for agent in nearby_agents if agent != current_agent])
+                            if target_agent and target_agent.inventory.items:
+                                item_to_give = random.choice(current_agent.inventory.items)
+                                item_to_receive = random.choice(target_agent.inventory.items)
+                                trade_item(current_agent, item_to_give["name"], item_to_give["quantity"], item_to_receive["name"], item_to_receive["quantity"], target_agent, environment)
+                                reward = 10
+                    elif action == "give":
+                        nearby_agents = environment.get_nearby_agents(current_agent.position)
+                        if nearby_agents:
+                            target_agents = [agent for agent in nearby_agents if agent != current_agent]
+                            if target_agents:
+                                target_agent = random.choice(target_agents)
+                                item_to_give = random.choice(current_agent.inventory.items)
+                                give_item(current_agent, item_to_give["name"], item_to_give["quantity"], target_agent, environment)
+                                reward = 5
+                    elif action == "ask":
+                        nearby_agents = environment.get_nearby_agents(current_agent.position)
+                        if nearby_agents:
+                            target_agents = [agent for agent in nearby_agents if agent != current_agent and agent.inventory.items]
+                            if target_agents:
+                                target_agent = random.choice(target_agents)
+                                item_to_ask = random.choice(target_agent.inventory.items)
+                                ask_for_item(current_agent, item_to_ask["name"], item_to_ask["quantity"], target_agent, environment)
+                                reward = 2
+                    elif action == "move":
+                        new_x = random.randint(0, environment.grid_size[0] - 1)
+                        new_y = random.randint(0, environment.grid_size[1] - 1)
+                        move(current_agent, (new_x, new_y), environment, shared_grid, shared_grid_lock)
+                    elif action == "use":
+                        item_to_use = random.choice(current_agent.inventory.items)
+                        use_item(current_agent, item_to_use["name"], environment)
+                    elif action == "put":
+                        item_to_put = random.choice(current_agent.inventory.items)
+                        update_inventory(current_agent, item_to_put["name"], item_to_put["quantity"], environment, "put")
+
+                    next_state = current_agent.get_state(environment)
+                    current_agent.update_q_table(state, action, reward, next_state)
             else:
                 print(f"Agent {current_agent.name} failed to generate a response.")
 
