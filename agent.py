@@ -55,13 +55,16 @@ class Agent:
     def receive_message(self, message):
         self.messages.append(message)
 
-    def send_message(self, message_content, environment):
+    def send_message(self, message_content, environment, is_announcement=False):
         message = Message(self.name, message_content)
         nearby_agents = environment.get_nearby_agents(self.position)
         for agent in nearby_agents:
             if agent != self:
                 agent.receive_message(message)
-        print(str(message))
+        if is_announcement:
+            print(f"Mayor's Announcement: {message_content}")
+        else:
+            print(str(message))
 
     def generate_response(self, prompt, role="user", max_retries=3, retry_delay=5):
         retries = 0
@@ -134,11 +137,11 @@ class Agent:
                 move(self, (new_x, new_y), environment, shared_grid, shared_grid_lock)
             else:
                 self.send_message("Invalid command. Please try again.", environment)
-                self.send_message(environment.list_commands().format(item="{item}", agent="{agent}"), environment)
+                self.send_message(environment.list_commands(), environment)
         elif parts[0] == "inventory":
             list_inventory(self, environment)
         elif parts[0] == "help":
-            self.send_message(environment.list_commands().format(item="{item}", agent="{agent}"), environment)
+            self.send_message(environment.list_commands(), environment)
         elif parts[0] == "think":
             self.think(environment)
         else:
@@ -190,7 +193,7 @@ class Agent:
             return max(self.q_table[state], key=self.q_table[state].get)
 
     def update_q_table(self, state, action, reward, next_state):
-        old_value = self.q_table[state][action]
+        old_value = self.q_table[state][action] if state in self.q_table and action in self.q_table[state] else 0
         next_max = self.get_max_q(next_state)
         new_value = (1 - self.learning_rate) * old_value + self.learning_rate * (reward + self.discount_factor * next_max)
         self.q_table[state][action] = new_value
@@ -203,12 +206,13 @@ class Agent:
         """, environment)
 
         self.send_message(environment.list_items(), environment)
-        self.send_message(environment.list_commands().format(item="{item}", agent="{agent}"), environment)
+        self.send_message(environment.list_commands(), environment)
 
         turn_order = environment.agents.copy()
         current_agent_index = 0
+        is_town_complete = False
 
-        while True:
+        while not is_town_complete:
             current_agent = turn_order[current_agent_index]
             prompt = " ".join(environment.messages[-5:])
             response = current_agent.generate_response(prompt)
@@ -217,7 +221,7 @@ class Agent:
 
                 if "town is complete" in response.lower():
                     print(f"Agent {current_agent.name} has determined that the town is complete.")
-                    break
+                    is_town_complete = True
                 else:
                     state = current_agent.get_state(environment)
                     action = current_agent.choose_action(state)
@@ -227,7 +231,7 @@ class Agent:
                         nearby_agents = environment.get_nearby_agents(current_agent.position)
                         if nearby_agents:
                             other_agents = [agent for agent in nearby_agents if agent != current_agent]
-                            if other_agents:  # Check if the list is not empty
+                            if other_agents:
                                 target_agent = random.choice(other_agents)
                                 if target_agent and target_agent.inventory.items:
                                     item_to_give = random.choice(current_agent.inventory.items)
@@ -269,6 +273,21 @@ class Agent:
                 print(f"Agent {current_agent.name} failed to generate a response.")
 
             current_agent_index = (current_agent_index + 1) % len(turn_order)
+
+            # Check for user input (non-blocking)
+            try:
+                user_input = input("Enter your suggestion or announcement (or 'q' to quit): ")
+                if user_input.lower() == 'q':
+                    is_town_complete = True
+                elif user_input:
+                    if current_agent.name == "Fred":  # Assuming "Fred" is the mayor
+                        current_agent.send_message(user_input, environment, is_announcement=True)
+                    else:
+                        current_agent.send_message(f"{current_agent.name}: {user_input}", environment)
+            except:
+                pass
+
+        print("Town-building process completed.")
 
     def extract_command(self, text):
         for command in self.memory.get("command_list", []):

@@ -2,7 +2,6 @@ import time
 import random
 from multiprocessing import Process, Array, Lock
 from openai import OpenAI
-from groq import Groq
 from environment import Environment
 from mayor import Mayor
 from agent import Agent
@@ -14,10 +13,8 @@ def main():
     
     openai_base_url = "http://localhost:11434/v1"
     openai_api_key = "ollama"
-    groq_api_key = "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"
 
     openai_api = OpenAI(base_url=openai_base_url, api_key=openai_api_key)
-    groq_api = Groq(api_key=groq_api_key)
 
     grid_size = (100, 100)
     environment = Environment(grid_size)
