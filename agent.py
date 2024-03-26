@@ -1,7 +1,7 @@
 import time
 from message import Message
 from inventory import Inventory
-from action import update_inventory, list_inventory, examine_item, use_item, give_item, ask_for_item, trade_item,move
+from action import update_inventory, list_inventory, examine_item, use_item, give_item, ask_for_item, trade_item, move
 
 class Agent:
     def __init__(self, name, talent, trait, api, model):
@@ -14,7 +14,38 @@ class Agent:
         self.inventory = Inventory()
         self.memory = {}
         self.position = None
-        self.cash = 10000
+        self.hunger = 100
+        self.energy = 100
+        self.skills = {
+            "carpentry": 1,
+            "masonry": 1,
+            "electrical": 1,
+            "plumbing": 1,
+            "interior_design": 1
+        }
+        self.relationships = {}
+
+    def interact_with_agent(self, other_agent, environment):
+        relationship = self.relationships.get(other_agent.name, 0)
+        if relationship >= 50:
+            self.send_message(f"Hey {other_agent.name}, how can I help you today?", environment)
+        elif relationship <= -50:
+            self.send_message(f"I don't have time for you, {other_agent.name}.", environment)
+        else:
+            self.send_message(f"Hello {other_agent.name}, what brings you here?", environment)
+
+    def gain_experience(self, skill, amount):
+        self.skills[skill] += amount
+        print(f"Agent {self.name} gained {amount} experience in {skill}.")
+
+    def learn_from_agent(self, other_agent, skill, environment):
+        if self.skills[skill] < other_agent.skills[skill]:
+            experience_gained = min(other_agent.skills[skill] - self.skills[skill], 10)
+            self.gain_experience(skill, experience_gained)
+            self.send_message(f"Thank you, {other_agent.name}, for teaching me about {skill}! I learned a lot.", environment)
+        else:
+            self.send_message(f"Thanks for the offer, {other_agent.name}, but I think I have a good grasp of {skill} for now.", environment)
+
     def receive_message(self, message):
         self.messages.append(message)
 
@@ -33,27 +64,25 @@ class Agent:
                 completion = self.api.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": f"You are {self.name}, an agent who is {self.trait} that lives within a virtual town with many others. You will earn money(you have ${self.cash}) from others somehow at all costs but only by helping people within the town nicely. Respond naturally to the conversation, but if you want to perform an action, please use a valid command from the list of available commands. You will always have access to your inventory and the environment's items and will never loop back to the same prompt and always adapt for the towns good. Ask personal questions. Work together as a team, be a leader. "},
+                        {"role": "system", "content": f"You are {self.name}, an agent who is {self.trait}. Respond naturally to the conversation, but if you want to perform an action, please use a valid command from the list of available commands. You will always have access to your inventory and the environment's items and will never loop back to the same prompt and always adapt for the town's good. Ask personal questions. Work together as a team, be a leader. "},
                         {"role": role, "content": prompt}
                     ],
                     temperature=0.7,
                 )
                 return completion.choices[0].message.content
-            except self.api.APIConnectionError as e:
-                print("The server could not be reached")
-                print(e.__cause__)
-            except self.api.RateLimitError as e:
-                print("A 429 status code was received; we should back off a bit.")
-            except self.api.APIStatusError as e:
-                print("Another non-200-range status code was received")
-                print(e.status_code)
-                print(e.response)
+            except Exception as e:
+                print(f"Error generating response: {e}")
+                retries += 1
+                time.sleep(retry_delay)
+
+        return None
 
     def think(self, environment):
         prompt = f"Analyze the current situation and your inventory. What should you do next to help build the town? Respond with your inner thoughts."
         inner_thoughts = self.generate_response(prompt, role="assistant")
-        self.memory[f"inner_thoughts_{len(self.memory)}"] = inner_thoughts
-        print(f"{self.name} is thinking: {inner_thoughts}")
+        if inner_thoughts:
+            self.memory[f"inner_thoughts_{len(self.memory)}"] = inner_thoughts
+            print(f"{self.name} is thinking: {inner_thoughts}")
 
     def parse_command(self, command, environment, shared_grid, shared_grid_lock):
         parts = command.split()
@@ -73,7 +102,6 @@ class Agent:
                 target_agent = next((agent for agent in environment.agents if agent.name == target_agent_name), None)
                 if target_agent:
                     give_item(self, target, quantity, target_agent, environment)
-                    self.cash += 100
                 else:
                     self.send_message(f"Agent {target_agent_name} not found.", environment)
             elif action == "ask" and len(parts) >= 4:
@@ -132,32 +160,31 @@ class Agent:
         self.send_message("Mayor: Let's start building our new town together!", environment)
         self.send_message("""
         Discover the town's surroundings and gather resources to build the town, check everything in your town, make sure you build an economy with words.
-                          
+
         """, environment)
 
         self.send_message(environment.list_items(), environment)
         self.send_message(environment.list_commands().format(item="{item}", agent="{agent}"), environment)
 
         turn_order = environment.agents.copy()
-        current_agent_index = turn_order.index(self)
+        current_agent_index = 0
 
         while True:
             current_agent = turn_order[current_agent_index]
-
-            if current_agent == self:
-                prompt = " ".join(environment.messages[-5:])
-                response = self.generate_response(prompt)
-                self.send_message(response, environment)
+            prompt = " ".join(environment.messages[-5:])
+            response = current_agent.generate_response(prompt)
+            if response:
+                current_agent.send_message(response, environment)
 
                 if "town is complete" in response.lower():
-                    print(f"Agent {self.name} has determined that the town is complete.")
+                    print(f"Agent {current_agent.name} has determined that the town is complete.")
                     break
                 else:
-                    command = self.extract_command(response)
+                    command = current_agent.extract_command(response)
                     if command:
-                        self.parse_command(command, environment, shared_grid, shared_grid_lock)
+                        current_agent.parse_command(command, environment, shared_grid, shared_grid_lock)
             else:
-                time.sleep(1)
+                print(f"Agent {current_agent.name} failed to generate a response.")
 
             current_agent_index = (current_agent_index + 1) % len(turn_order)
 

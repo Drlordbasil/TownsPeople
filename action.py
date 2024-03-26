@@ -1,4 +1,3 @@
-# action.py
 from message import Message
 from inventory import Inventory
 
@@ -65,16 +64,18 @@ def trade_item(agent, item_name, quantity, target_item, target_quantity, target_
     agent.memory[f"proposed_trade_{quantity}_{item_name}_for_{target_quantity}_{target_item}_with_{target_agent.name}"] = True
     print(f"Agent {agent.name} proposed a trade with {target_agent.name}.")
 
-def move(agent, new_position, environment, shared_grid):
-    if environment.is_valid_position(new_position):
-        old_position = agent.position
+def move(agent, new_position, environment, shared_grid, shared_grid_lock):
+    with shared_grid_lock:
+        if environment.is_valid_position(new_position):
+            old_position = agent.position
+            print(f"Agent {agent.name} moved from {old_position} to {new_position}")
 
-        if old_position is not None:
-            shared_grid[old_position[0] * environment.grid_size[1] + old_position[1]] = 0
+            if old_position is not None:
+                shared_grid[old_position[0] * environment.grid_size[1] + old_position[1]] = 0
 
-        shared_grid[new_position[0] * environment.grid_size[1] + new_position[1]] = 1
-        environment.update_agent_position(agent, new_position)
-        agent.position = new_position
-        agent.send_message(f"I moved to {new_position}.", environment)
-    else:
-        agent.send_message(f"Cannot move to {new_position}. Position is not valid.", environment)
+            environment.update_agent_position(agent, new_position)
+            shared_grid[new_position[0] * environment.grid_size[1] + new_position[1]] = 1
+            agent.position = new_position
+            agent.send_message(f"I moved to {new_position}.", environment)
+        else:
+            agent.send_message(f"Cannot move to {new_position}. Position is not valid.", environment)
