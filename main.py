@@ -29,7 +29,7 @@ def main():
     print(f"{mayor.name} has been appointed as the mayor.")
 
     num_agents = 5
-    apis_and_models = [(openai_api, "mistral"),(openai_api, "llama2"),(openai_api, "gemma"), (groq_api, "mixtral-8x7b-32768"),(groq_api, "LLaMA2-70b"),(groq_api, "Gemma-7b-it")]
+    apis_and_models = [(openai_api, "mistral"),(openai_api, "llama2"),(openai_api, "gemma")]
 
     for _ in range(num_agents):
         name = generate_random_name()
@@ -61,14 +61,14 @@ def main():
     shared_grid_lock = Lock()
 
     # Start the visualization process
-    #visualization_process = Process(target=visualize_town, args=(grid_size, shared_grid, shared_grid_lock))
-    #visualization_process.start()
+    visualization_process = Process(target=visualize_town, args=(grid_size, shared_grid, shared_grid_lock))
+    visualization_process.start()
 
     # Start the build_town process
     environment.agents[0].build_town(environment, shared_grid, shared_grid_lock)
 
     # Wait for the build_town process to complete
-    #visualization_process.join()
+    visualization_process.join()
 
     print("Town-building process completed.")
 

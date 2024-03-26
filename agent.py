@@ -226,12 +226,14 @@ class Agent:
                     if action == "trade":
                         nearby_agents = environment.get_nearby_agents(current_agent.position)
                         if nearby_agents:
-                            target_agent = random.choice([agent for agent in nearby_agents if agent != current_agent])
-                            if target_agent and target_agent.inventory.items:
-                                item_to_give = random.choice(current_agent.inventory.items)
-                                item_to_receive = random.choice(target_agent.inventory.items)
-                                trade_item(current_agent, item_to_give["name"], item_to_give["quantity"], item_to_receive["name"], item_to_receive["quantity"], target_agent, environment)
-                                reward = 10
+                            other_agents = [agent for agent in nearby_agents if agent != current_agent]
+                            if other_agents:  # Check if the list is not empty
+                                target_agent = random.choice(other_agents)
+                                if target_agent and target_agent.inventory.items:
+                                    item_to_give = random.choice(current_agent.inventory.items)
+                                    item_to_receive = random.choice(target_agent.inventory.items)
+                                    trade_item(current_agent, item_to_give["name"], item_to_give["quantity"], item_to_receive["name"], item_to_receive["quantity"], target_agent, environment)
+                                    reward = 10
                     elif action == "give":
                         nearby_agents = environment.get_nearby_agents(current_agent.position)
                         if nearby_agents:

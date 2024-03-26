@@ -6,7 +6,7 @@ def visualize_town(grid_size, shared_grid, shared_grid_lock):
     pygame.init()
 
     # Set up the window size based on the grid size
-    cell_size = 50
+    cell_size = 5
     window_width = grid_size[0] * cell_size
     window_height = grid_size[1] * cell_size
     screen = pygame.display.set_mode((window_width, window_height))
@@ -31,18 +31,15 @@ def visualize_town(grid_size, shared_grid, shared_grid_lock):
 
         # Draw the agents
         with shared_grid_lock:
-            print("Acquiring shared_grid_lock...")
             for i in range(grid_size[0]):
                 for j in range(grid_size[1]):
                     grid_value = shared_grid[i * grid_size[1] + j]
-                    print(f"Grid value at ({i}, {j}): {grid_value}")
                     if grid_value == 1:
-                        pygame.draw.circle(screen, agent_color, (i * cell_size + cell_size // 2, j * cell_size + cell_size // 2), cell_size // 4)
-                        print(f"Agent drawn at ({i}, {j})")
+                        pygame.draw.circle(screen, agent_color, (i * cell_size + cell_size // 2, j * cell_size + cell_size // 2), cell_size // 2)  # Increased radius
+                        #print(f"Agent drawn at ({i}, {j})")
                     elif grid_value == 2:
-                        pygame.draw.circle(screen, mayor_color, (i * cell_size + cell_size // 2, j * cell_size + cell_size // 2), cell_size // 3)
-                        print(f"Mayor drawn at ({i}, {j})")
-            print("Releasing shared_grid_lock...")
+                        pygame.draw.circle(screen, mayor_color, (i * cell_size + cell_size // 2, j * cell_size + cell_size // 2), cell_size // 2)  # Increased radius
+                        #print(f"Mayor drawn at ({i}, {j})")
 
         # Update the display
         pygame.display.flip()
