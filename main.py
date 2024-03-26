@@ -27,7 +27,7 @@ def main():
     print(f"{mayor.name} has been appointed as the mayor.")
 
     num_agents = 5
-    apis_and_models = [(openai_api, "mistral"),(openai_api, "mixtral"), (groq_api, "mixtral-8x7b-32768"),(groq_api, "LLaMA2-70b"),(groq_api, "Gemma-7b-it")]
+    apis_and_models = [(openai_api, "mistral"),(openai_api, "llama2"),(openai_api, "gemma"), (groq_api, "mixtral-8x7b-32768"),(groq_api, "LLaMA2-70b"),(groq_api, "Gemma-7b-it")]
 
     for _ in range(num_agents):
         name = generate_random_name()
