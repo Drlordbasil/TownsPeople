@@ -2,7 +2,8 @@ import time
 import random
 from message import Message
 from inventory import Inventory
-from action import update_inventory, list_inventory, examine_item, use_item, give_item, ask_for_item, trade_item, move
+from action import update_inventory, list_inventory, examine_item, use_item, give_item, ask_for_item, trade_item, accept_trade, move
+from environment import Environment
 
 class Agent:
     def __init__(self, name, talent, trait, api, model):
@@ -56,7 +57,8 @@ class Agent:
         self.messages.append(message)
 
     def send_message(self, message_content, environment, is_announcement=False):
-        message = Message(self.name, message_content)
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        message = Message(self.name, message_content, timestamp)
         nearby_agents = environment.get_nearby_agents(self.position)
         for agent in nearby_agents:
             if agent != self:
@@ -66,14 +68,14 @@ class Agent:
         else:
             print(str(message))
 
-    def generate_response(self, prompt, role="user", max_retries=3, retry_delay=5):
+    def generate_response(self, prompt, environment, role="user", max_retries=3, retry_delay=5):
         retries = 0
         while retries < max_retries:
             try:
                 completion = self.api.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": f"You are {self.name}, an agent who is {self.trait}. Respond naturally to the conversation, but if you want to perform an action, please use a valid command from the list of available commands. You will always have access to your inventory and the environment's items and will never loop back to the same prompt and always adapt for the town's good. Ask personal questions. Work together as a team, be a leader. "},
+                        {"role": "system", "content": f"You are {self.name} within {environment}, an agent who is {self.trait}. Respond naturally to the conversation, but if you want to perform an action, please use a valid command from the list of available commands. You will always have access to your inventory and the environment's items and will never loop back to the same prompt and always adapt for the town's good. Ask personal questions. Work together as a team, be a leader."},
                         {"role": role, "content": prompt}
                     ],
                     temperature=0.7,
@@ -88,7 +90,7 @@ class Agent:
 
     def think(self, environment):
         prompt = f"Analyze the current situation and your inventory. What should you do next to help build the town? Respond with your inner thoughts."
-        inner_thoughts = self.generate_response(prompt, role="assistant")
+        inner_thoughts = self.generate_response(prompt, environment, role="assistant")
         if inner_thoughts:
             self.memory[f"inner_thoughts_{len(self.memory)}"] = inner_thoughts
             print(f"{self.name} is thinking: {inner_thoughts}")
@@ -106,38 +108,56 @@ class Agent:
             elif action == "use":
                 use_item(self, target, environment)
             elif action == "give" and len(parts) >= 4:
-                quantity = int(parts[2])
+                quantity = int(parts[1])
                 target_agent_name = parts[3]
                 target_agent = next((agent for agent in environment.agents if agent.name == target_agent_name), None)
                 if target_agent:
                     give_item(self, target, quantity, target_agent, environment)
                 else:
                     self.send_message(f"Agent {target_agent_name} not found.", environment)
-            elif action == "ask" and len(parts) >= 4:
-                quantity = int(parts[2])
-                target_agent_name = parts[3]
+            elif action == "ask" and len(parts) >= 5:
+                target_agent_name = parts[1]
+                quantity = int(parts[3])
+                target = parts[4]
                 target_agent = next((agent for agent in environment.agents if agent.name == target_agent_name), None)
                 if target_agent:
                     ask_for_item(self, target, quantity, target_agent, environment)
                 else:
                     self.send_message(f"Agent {target_agent_name} not found.", environment)
-            elif action == "trade" and len(parts) >= 6:
-                quantity = int(parts[2])
-                target_agent_name = parts[3]
-                target_item = parts[4]
-                target_quantity = int(parts[5])
+            elif action == "trade" and len(parts) >= 8:
+                quantity = int(parts[1])
+                item_name = parts[2]
+                target_agent_name = parts[4]
+                target_quantity = int(parts[6])
+                target_item = parts[7]
                 target_agent = next((agent for agent in environment.agents if agent.name == target_agent_name), None)
                 if target_agent:
-                    trade_item(self, target, quantity, target_item, target_quantity, target_agent, environment)
+                    trade_item(self, item_name, quantity, target_item, target_quantity, target_agent, environment)
                 else:
                     self.send_message(f"Agent {target_agent_name} not found.", environment)
-            elif action == "move" and len(parts) >= 4:
-                new_x = int(parts[2])
-                new_y = int(parts[3])
+            elif action == "accept" and len(parts) >= 3:
+                if parts[1] == "trade":
+                    target_agent_name = parts[3]
+                    target_agent = next((agent for agent in environment.agents if agent.name == target_agent_name), None)
+                    if target_agent:
+                        trade_proposal = target_agent.memory.get(f"proposed_trade_with_{self.name}", None)
+                        if trade_proposal:
+                            item_name, quantity, target_item, target_quantity = trade_proposal
+                            accept_trade(self, item_name, quantity, target_item, target_quantity, target_agent, environment)
+                            del target_agent.memory[f"proposed_trade_with_{self.name}"]
+                        else:
+                            self.send_message(f"There is no pending trade proposal from {target_agent_name}.", environment)
+                    else:
+                        self.send_message(f"Agent {target_agent_name} not found.", environment)
+            elif action == "move" and len(parts) >= 3:
+                new_x = int(parts[1])
+                new_y = int(parts[2])
                 move(self, (new_x, new_y), environment, shared_grid, shared_grid_lock)
             else:
-                self.send_message("Invalid command. Please try again.", environment)
+                #self.send_message("Invalid command. Please try again.", environment)
                 self.send_message(environment.list_commands(), environment)
+                
+                self.think(environment)
         elif parts[0] == "inventory":
             list_inventory(self, environment)
         elif parts[0] == "help":
@@ -146,23 +166,9 @@ class Agent:
             self.think(environment)
         else:
             # Regular chat, no need to consider as a command
+            self.think(environment)
+            self.choose_action(environment)
             pass
-
-    def move(self, new_position, environment, shared_grid, shared_grid_lock):
-        with shared_grid_lock:
-            if environment.is_valid_position(new_position):
-                old_position = self.position
-                print(f"Agent {self.name} moved from {old_position} to {new_position}")
-
-                if old_position is not None:
-                    shared_grid[old_position[0] * environment.grid_size[1] + old_position[1]] = 0
-
-                environment.update_agent_position(self, new_position)
-                shared_grid[new_position[0] * environment.grid_size[1] + new_position[1]] = 1
-                self.position = new_position
-                self.send_message(f"I moved to {new_position}.", environment)
-            else:
-                self.send_message(f"Cannot move to {new_position}. Position is not valid.", environment)
 
     def get_state(self, environment):
         nearby_agents = environment.get_nearby_agents(self.position)
@@ -200,7 +206,7 @@ class Agent:
 
     def build_town(self, environment, shared_grid, shared_grid_lock):
         print(f"Agent {self.name} is initiating the town-building process.")
-        self.send_message("Mayor: Let's start building our new town together!", environment)
+        self.send_message("Let's start building our new town together!", environment)
         self.send_message("""
         Discover the town's surroundings and gather resources to build the town, check everything in your town, make sure you build an economy with words.
         """, environment)
@@ -214,8 +220,8 @@ class Agent:
 
         while not is_town_complete:
             current_agent = turn_order[current_agent_index]
-            prompt = " ".join(environment.messages[-5:])
-            response = current_agent.generate_response(prompt)
+            prompt = "\n".join(str(message) for message in environment.messages[-5:])
+            response = current_agent.generate_response(prompt, environment)
             if response:
                 current_agent.send_message(response, environment)
 
@@ -223,52 +229,54 @@ class Agent:
                     print(f"Agent {current_agent.name} has determined that the town is complete.")
                     is_town_complete = True
                 else:
-                    state = current_agent.get_state(environment)
-                    action = current_agent.choose_action(state)
-                    reward = 0
-
-                    if action == "trade":
-                        nearby_agents = environment.get_nearby_agents(current_agent.position)
-                        if nearby_agents:
-                            other_agents = [agent for agent in nearby_agents if agent != current_agent]
-                            if other_agents:
-                                target_agent = random.choice(other_agents)
-                                if target_agent and target_agent.inventory.items:
+                    command = current_agent.extract_command(response)
+                    if command:
+                        current_agent.parse_command(command, environment, shared_grid, shared_grid_lock)
+                        state = current_agent.get_state(environment)
+                        action = current_agent.choose_action(state)
+                        reward = 0
+                        if action == "trade":
+                            nearby_agents = environment.get_nearby_agents(current_agent.position)
+                            if nearby_agents:
+                                other_agents = [agent for agent in nearby_agents if agent != current_agent]
+                                if other_agents:
+                                    target_agent = random.choice(other_agents)
+                                    if target_agent and target_agent.inventory.items:
+                                        item_to_give = random.choice(current_agent.inventory.items)
+                                        item_to_receive = random.choice(target_agent.inventory.items)
+                                        trade_item(current_agent, item_to_give.name, item_to_give.quantity, item_to_receive.name, item_to_receive.quantity, target_agent, environment)
+                                        reward = 10
+                        elif action == "give":
+                            nearby_agents = environment.get_nearby_agents(current_agent.position)
+                            if nearby_agents:
+                                target_agents = [agent for agent in nearby_agents if agent != current_agent]
+                                if target_agents:
+                                    target_agent = random.choice(target_agents)
                                     item_to_give = random.choice(current_agent.inventory.items)
-                                    item_to_receive = random.choice(target_agent.inventory.items)
-                                    trade_item(current_agent, item_to_give["name"], item_to_give["quantity"], item_to_receive["name"], item_to_receive["quantity"], target_agent, environment)
-                                    reward = 10
-                    elif action == "give":
-                        nearby_agents = environment.get_nearby_agents(current_agent.position)
-                        if nearby_agents:
-                            target_agents = [agent for agent in nearby_agents if agent != current_agent]
-                            if target_agents:
-                                target_agent = random.choice(target_agents)
-                                item_to_give = random.choice(current_agent.inventory.items)
-                                give_item(current_agent, item_to_give["name"], item_to_give["quantity"], target_agent, environment)
-                                reward = 5
-                    elif action == "ask":
-                        nearby_agents = environment.get_nearby_agents(current_agent.position)
-                        if nearby_agents:
-                            target_agents = [agent for agent in nearby_agents if agent != current_agent and agent.inventory.items]
-                            if target_agents:
-                                target_agent = random.choice(target_agents)
-                                item_to_ask = random.choice(target_agent.inventory.items)
-                                ask_for_item(current_agent, item_to_ask["name"], item_to_ask["quantity"], target_agent, environment)
-                                reward = 2
-                    elif action == "move":
-                        new_x = random.randint(0, environment.grid_size[0] - 1)
-                        new_y = random.randint(0, environment.grid_size[1] - 1)
-                        move(current_agent, (new_x, new_y), environment, shared_grid, shared_grid_lock)
-                    elif action == "use":
-                        item_to_use = random.choice(current_agent.inventory.items)
-                        use_item(current_agent, item_to_use["name"], environment)
-                    elif action == "put":
-                        item_to_put = random.choice(current_agent.inventory.items)
-                        update_inventory(current_agent, item_to_put["name"], item_to_put["quantity"], environment, "put")
+                                    give_item(current_agent, item_to_give.name, item_to_give.quantity, target_agent, environment)
+                                    reward = 5
+                        elif action == "ask":
+                            nearby_agents = environment.get_nearby_agents(current_agent.position)
+                            if nearby_agents:
+                                target_agents = [agent for agent in nearby_agents if agent != current_agent and agent.inventory.items]
+                                if target_agents:
+                                    target_agent = random.choice(target_agents)
+                                    item_to_ask = random.choice(target_agent.inventory.items)
+                                    ask_for_item(current_agent, item_to_ask.name, item_to_ask.quantity, target_agent, environment)
+                                    reward = 2
+                        elif action == "move":
+                            new_x = random.randint(0, environment.grid_size[0] - 1)
+                            new_y = random.randint(0, environment.grid_size[1] - 1)
+                            move(current_agent, (new_x, new_y), environment, shared_grid, shared_grid_lock)
+                        elif action == "use":
+                            item_to_use = random.choice(current_agent.inventory.items)
+                            use_item(current_agent, item_to_use.name, environment)
+                        elif action == "put":
+                            item_to_put = random.choice(current_agent.inventory.items)
+                            update_inventory(current_agent, item_to_put.name, item_to_put.quantity, environment, "put")
 
-                    next_state = current_agent.get_state(environment)
-                    current_agent.update_q_table(state, action, reward, next_state)
+                        next_state = current_agent.get_state(environment)
+                        current_agent.update_q_table(state, action, reward, next_state)
             else:
                 print(f"Agent {current_agent.name} failed to generate a response.")
 
@@ -279,18 +287,17 @@ class Agent:
                 user_input = input("Enter your suggestion or announcement (or 'q' to quit): ")
                 if user_input.lower() == 'q':
                     is_town_complete = True
+                    break  # Exit the loop when the user quits
                 elif user_input:
-                    if current_agent.name == "Fred":  # Assuming "Fred" is the mayor
-                        current_agent.send_message(user_input, environment, is_announcement=True)
-                    else:
-                        current_agent.send_message(f"{current_agent.name}: {user_input}", environment)
+                    current_agent.send_message(user_input, environment, is_announcement=True)
             except:
                 pass
 
         print("Town-building process completed.")
 
-    def extract_command(self, text):
-        for command in self.memory.get("command_list", []):
+    def extract_command(self, text, environment):
+        command_list = environment.commands
+        for command in command_list:
             if command.split("{")[0].strip() in text.lower():
                 return text
         return None

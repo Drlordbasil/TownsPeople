@@ -1,51 +1,54 @@
+from message import Message
+from inventory import InventoryItem
+
 class Environment:
     def __init__(self, grid_size):
         self.agents = []
         self.messages = []
         self.items = [
-            {"name": "wood", "quantity": 10},
-            {"name": "stone", "quantity": 5},
-            {"name": "hammer", "quantity": 2},
-            {"name": "nails", "quantity": 20},
-            {"name": "paint", "quantity": 3},
-            {"name": "brush", "quantity": 3},
-            {"name": "Laptop With AI", "quantity": 1},
-            {"name": "Apples", "quantity": 10},
-            {"name": "Bananas", "quantity": 5},
-            {"name": "Oranges", "quantity": 5},
-            {"name": "Pineapple", "quantity": 2},
-            {"name": "Mangoes", "quantity": 3},
-            {"name": "Grapes", "quantity": 5},
-            {"name": "Strawberries", "quantity": 5},
-            {"name": "Blueberries", "quantity": 5},
-            {"name": "Raspberries", "quantity": 5},
-            {"name": "Blackberries", "quantity": 5},
-            {"name": "Peaches", "quantity": 5},
-            {"name": "Plums", "quantity": 5},
-            {"name": "Cherries", "quantity": 5},
-            {"name": "Pears", "quantity": 5},
-            {"name": "Watermelon", "quantity": 5},
-            {"name": "Cantaloupe", "quantity": 5},
-            {"name": "Honeydew", "quantity": 5},
-            {"name": "Kiwi", "quantity": 5},
-            {"name": "Papaya", "quantity": 5},
-            {"name": "Guava", "quantity": 5},
-            {"name": "Passion Fruit", "quantity": 5},
-            {"name": "Dragon Fruit", "quantity": 5},
-            {"name": "Star Fruit", "quantity": 5},
-            {"name": "Lychee", "quantity": 5},
-            {"name": "Mangosteen", "quantity": 5},
-            {"name": "Durian", "quantity": 5},
-            {"name": "Jackfruit", "quantity": 5},
-            {"name": "Pomegranate", "quantity": 5},
-            {"name": "Coconut", "quantity": 5},
-            {"name": "Avocado", "quantity": 5},
-            {"name": "Lemon", "quantity": 5},
-            {"name": "Lime", "quantity": 5},
-            {"name": "Grapefruit", "quantity": 5},
-            {"name": "Tangerine", "quantity": 5},
-            {"name": "Kumquat", "quantity": 5},
-            {"name": "Apricot", "quantity": 5},
+            InventoryItem("wood", 10),
+            InventoryItem("stone", 5),
+            InventoryItem("hammer", 2),
+            InventoryItem("nails", 20),
+            InventoryItem("paint", 3),
+            InventoryItem("brush", 3),
+            InventoryItem("laptop_with_ai", 1),
+            InventoryItem("apples", 10),
+            InventoryItem("bananas", 5),
+            InventoryItem("oranges", 5),
+            InventoryItem("pineapple", 2),
+            InventoryItem("mangoes", 3),
+            InventoryItem("grapes", 5),
+            InventoryItem("strawberries", 5),
+            InventoryItem("blueberries", 5),
+            InventoryItem("raspberries", 5),
+            InventoryItem("blackberries", 5),
+            InventoryItem("peaches", 5),
+            InventoryItem("plums", 5),
+            InventoryItem("cherries", 5),
+            InventoryItem("pears", 5),
+            InventoryItem("watermelon", 5),
+            InventoryItem("cantaloupe", 5),
+            InventoryItem("honeydew", 5),
+            InventoryItem("kiwi", 5),
+            InventoryItem("papaya", 5),
+            InventoryItem("guava", 5),
+            InventoryItem("passion_fruit", 5),
+            InventoryItem("dragon_fruit", 5),
+            InventoryItem("star_fruit", 5),
+            InventoryItem("lychee", 5),
+            InventoryItem("mangosteen", 5),
+            InventoryItem("durian", 5),
+            InventoryItem("jackfruit", 5),
+            InventoryItem("pomegranate", 5),
+            InventoryItem("coconut", 5),
+            InventoryItem("avocado", 5),
+            InventoryItem("lemon", 5),
+            InventoryItem("lime", 5),
+            InventoryItem("grapefruit", 5),
+            InventoryItem("tangerine", 5),
+            InventoryItem("kumquat", 5),
+            InventoryItem("apricot", 5),
         ]
         self.commands = [
             "take {item}",
@@ -53,9 +56,10 @@ class Environment:
             "inventory",
             "examine {item}",
             "use {item}",
-            "give {item} to {agent}",
-            "ask {agent} for {item}",
-            "trade {item} with {agent}",
+            "give {quantity} {item} to {agent}",
+            "ask {agent} for {quantity} {item}",
+            "trade {quantity} {item} for {quantity} {item} with {agent}",
+            "accept trade from {agent}",
             "help",
             "think",
         ]
@@ -79,7 +83,7 @@ class Environment:
     def get_nearby_agents(self, position, radius=1):
         nearby_agents = []
         for agent in self.agents:
-            if self.get_distance(position, agent.position) <= radius:
+            if agent.position is not None and self.get_distance(position, agent.position) <= radius:
                 nearby_agents.append(agent)
         return nearby_agents
 
@@ -93,17 +97,17 @@ class Environment:
     def broadcast_message(self, message):
         self.messages.append(message)
         for agent in self.agents:
-            if agent.name != message.split(":")[0]:
+            if agent.name != message.sender:
                 agent.receive_message(message)
 
     def get_item(self, item_name):
-        return next((item for item in self.items if item["name"] == item_name), None)
+        return next((item for item in self.items if item.name == item_name), None)
 
     def remove_item(self, item_name, quantity):
         item = self.get_item(item_name)
-        if item and item["quantity"] >= quantity:
-            item["quantity"] -= quantity
-            if item["quantity"] == 0:
+        if item and item.quantity >= quantity:
+            item.quantity -= quantity
+            if item.quantity == 0:
                 self.items.remove(item)
             return True
         return False
@@ -111,12 +115,12 @@ class Environment:
     def add_item(self, item_name, quantity):
         item = self.get_item(item_name)
         if item:
-            item["quantity"] += quantity
+            item.quantity += quantity
         else:
-            self.items.append({"name": item_name, "quantity": quantity})
+            self.items.append(InventoryItem(item_name, quantity))
 
     def list_items(self):
-        return "Available items: " + ", ".join(f"{item['name']} ({item['quantity']})" for item in self.items)
+        return "Available items: " + ", ".join(f"{item.name} ({item.quantity})" for item in self.items)
 
     def list_commands(self):
         return "Available commands: " + ", ".join(self.commands)
