@@ -17,24 +17,24 @@ import os
 
 def main():
 
-
-    model = "stablelm2"
+    smart_model = "mistral"
+    fast_model = "stablelm2"
     openai_api = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 
     # Create the environment
-    grid_size = (100, 100)
+    grid_size = (30, 30)
     environment = Environment(grid_size)
     print("Environment has been created.")
 
     # Create the mayor
     mayor_name = "Fred"
-    mayor_api, mayor_model = random.choice([(openai_api, model)])
+    mayor_api, mayor_model = random.choice([(openai_api, smart_model)])
     mayor = Mayor(mayor_name, mayor_api, mayor_model)
     print(f"{mayor.name} has been appointed as the mayor.")
 
     # Create the agents
     num_agents = 20
-    apis_and_models = [(openai_api, model), (openai_api, model), (openai_api, model)]
+    apis_and_models = [(openai_api, fast_model), (openai_api, smart_model), (openai_api, fast_model)]
 
     for _ in range(num_agents):
         name = generate_random_name()

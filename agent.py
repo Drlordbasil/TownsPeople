@@ -44,6 +44,7 @@ class Agent:
     def gain_experience(self, skill, amount):
         self.skills[skill] += amount
         print(f"Agent {self.name} gained {amount} experience in {skill}.")
+        
 
     def learn_from_agent(self, other_agent, skill, environment):
         if self.skills[skill] < other_agent.skills[skill]:
@@ -87,6 +88,7 @@ class Agent:
                 time.sleep(retry_delay)
 
         return None
+
 
     def think(self, environment):
         prompt = f"Analyze the current situation and your inventory. What should you do next to help build the town? Respond with your inner thoughts."
@@ -199,7 +201,9 @@ class Agent:
             return max(self.q_table[state], key=self.q_table[state].get)
 
     def update_q_table(self, state, action, reward, next_state):
-        old_value = self.q_table[state][action] if state in self.q_table and action in self.q_table[state] else 0
+        if state not in self.q_table:
+            self.q_table[state] = {action: 0 for action in self.get_available_actions(state)}
+        old_value = self.q_table[state].get(action, 0)
         next_max = self.get_max_q(next_state)
         new_value = (1 - self.learning_rate) * old_value + self.learning_rate * (reward + self.discount_factor * next_max)
         self.q_table[state][action] = new_value
