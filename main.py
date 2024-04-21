@@ -11,38 +11,43 @@ from action import trade_item, give_item, ask_for_item, move, use_item, update_i
 from message import Message
 import logging
 import os
-
-
-
+from rich import print
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from rich.style import Style
 
 def main():
-
-    smart_model = "mistral"
-    fast_model = "stablelm2"
+    console = Console()
+    smart_model = "llama3"
+    fast_model = "wizardlm2"
     openai_api = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
 
     # Create the environment
     grid_size = (30, 30)
     environment = Environment(grid_size)
-    print("Environment has been created.")
+    console.print(Panel(Text("Environment has been created.", style="bold green"), expand=False))
 
     # Create the mayor
     mayor_name = "Fred"
     mayor_api, mayor_model = random.choice([(openai_api, smart_model)])
     mayor = Mayor(mayor_name, mayor_api, mayor_model)
-    print(f"{mayor.name} has been appointed as the mayor.")
+    console.print(Panel(Text(f"{mayor.name} has been appointed as the mayor.", style="bold blue"), expand=False))
 
     # Create the agents
     num_agents = 20
     apis_and_models = [(openai_api, fast_model), (openai_api, smart_model), (openai_api, fast_model)]
+    agent_colors = [f"#{i:06x}" for i in range(num_agents)]  # Define colors for agents
 
-    for _ in range(num_agents):
+    for i in range(num_agents):
         name = generate_random_name()
         talent = generate_random_talent()
         trait = generate_random_trait()
         api, model = random.choice(apis_and_models)
         agent = Agent(name, talent, trait, api, model)
         environment.add_agent(agent)
+        agent_color = agent_colors[i]
+        console.print(Panel(Text(f"Agent {agent.name} has been born with talent: {agent.talent} and trait: {agent.trait}.", style=Style(color=agent_color)), expand=False))
 
     # Set initial positions for agents and mayor
     for agent in environment.agents:
@@ -56,7 +61,7 @@ def main():
         mayor_x, mayor_y = random.randint(0, grid_size[0] - 1), random.randint(0, grid_size[1] - 1)
     mayor.position = (mayor_x, mayor_y)
 
-    print("Starting the town-building process...")
+    console.print(Panel(Text("Starting the town-building process...", style="bold magenta"), expand=False))
 
     # Create a shared memory array to store the environment grid
     shared_grid_size = grid_size[0] * grid_size[1]
@@ -78,11 +83,12 @@ def main():
         current_agent = turn_order[current_agent_index]
         prompt = "\n".join(str(message) for message in environment.messages[-5:])
         response = current_agent.generate_response(prompt, environment)
+        
         if response:
             current_agent.send_message(response, environment)
 
             if "town is complete" in response.lower():
-                print(f"Agent {current_agent.name} has determined that the town is complete.")
+                console.print(Panel(Text(f"Agent {current_agent.name} has determined that the town is complete.", style="bold green"), expand=False))
                 is_town_complete = True
             else:
                 command = current_agent.extract_command(response, environment)
@@ -134,16 +140,14 @@ def main():
                     next_state = current_agent.get_state(environment)
                     current_agent.update_q_table(state, action, reward, next_state)
         else:
-            print(f"Agent {current_agent.name} failed to generate a response.")
+            console.print(Panel(Text(f"Agent {current_agent.name} failed to generate a response.", style="bold red"), expand=False))
 
         current_agent_index = (current_agent_index + 1) % len(turn_order)
-
-
 
         # Mayor provides guidance
         mayor.provide_guidance(environment)
 
-    print("Town-building process completed.")
+    console.print(Panel(Text("Town-building process completed.", style="bold magenta"), expand=False))
 
     # Wait for the visualization process to complete
     visualization_process.join()
