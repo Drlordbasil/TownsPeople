@@ -1,11 +1,16 @@
-from message import Message
 from inventory import InventoryItem
 
 class Environment:
     def __init__(self, grid_size):
         self.agents = []
         self.messages = []
-        self.items = [
+        self.items = self.initialize_items()
+        self.commands = self.initialize_commands()
+        self.grid = self.initialize_grid(grid_size)
+        self.grid_size = grid_size
+
+    def initialize_items(self):
+        return [
             InventoryItem("wood", 10),
             InventoryItem("stone", 5),
             InventoryItem("hammer", 2),
@@ -50,7 +55,9 @@ class Environment:
             InventoryItem("kumquat", 5),
             InventoryItem("apricot", 5),
         ]
-        self.commands = [
+
+    def initialize_commands(self):
+        return [
             "take {item}",
             "put {item}",
             "inventory",
@@ -63,8 +70,6 @@ class Environment:
             "help",
             "think",
         ]
-        self.grid = self.initialize_grid(grid_size)
-        self.grid_size = grid_size
 
     def initialize_grid(self, grid_size):
         return [[None] * grid_size[1] for _ in range(grid_size[0])]

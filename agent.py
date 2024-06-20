@@ -156,9 +156,7 @@ class Agent:
                 new_y = int(parts[2])
                 move(self, (new_x, new_y), environment, shared_grid, shared_grid_lock)
             else:
-                #self.send_message("Invalid command. Please try again.", environment)
                 self.send_message(environment.list_commands(), environment)
-                
                 self.think(environment)
         elif parts[0] == "inventory":
             list_inventory(self, environment)
@@ -167,7 +165,6 @@ class Agent:
         elif parts[0] == "think":
             self.think(environment)
         else:
-            # Regular chat, no need to consider as a command
             self.think(environment)
             self.choose_action(environment)
             pass
@@ -233,7 +230,7 @@ class Agent:
                     print(f"Agent {current_agent.name} has determined that the town is complete.")
                     is_town_complete = True
                 else:
-                    command = current_agent.extract_command(response)
+                    command = current_agent.extract_command(response, environment)
                     if command:
                         current_agent.parse_command(command, environment, shared_grid, shared_grid_lock)
                         state = current_agent.get_state(environment)
@@ -286,12 +283,11 @@ class Agent:
 
             current_agent_index = (current_agent_index + 1) % len(turn_order)
 
-            # Check for user input (non-blocking)
             try:
                 user_input = input("Enter your suggestion or announcement (or 'q' to quit): ")
                 if user_input.lower() == 'q':
                     is_town_complete = True
-                    break  # Exit the loop when the user quits
+                    break
                 elif user_input:
                     current_agent.send_message(user_input, environment, is_announcement=True)
             except:
